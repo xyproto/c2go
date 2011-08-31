@@ -10,4 +10,6 @@ Go2C 0.1
   C examples are from: http://www.cis.temple.edu/~ingargio/cis71/code/
   except for "test.c"
 
-
+	Requirements:
+		pycparser
+		ply
