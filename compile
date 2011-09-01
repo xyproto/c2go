@@ -7,5 +7,4 @@ rm lextab.py yacctab.py
 echo 6g $x.go
 6g $x.go
 echo 6l -o $x $x.6 && echo ok
-6l -o $x $x.6
-rm $x.6
+6l -o $x $x.6 && rm $x.6

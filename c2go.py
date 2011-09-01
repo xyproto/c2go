@@ -309,18 +309,43 @@ class GoGenerator(object):
     
     def visit_For(self, n):
         s = 'for '
-        if n.init: s += self.visit(n.init)
+        if n.init:
+          inits = self.visit(n.init)
+          if "," in inits:
+              # TODO: Fix this so that x=",", y="," as init can work...
+              s = inits.replace(",", ";") + "\n"
+              s += self._make_indent() + 'for '
+          else:
+              s += inits
         s += ';'
         if n.cond: s += ' ' + self.visit(n.cond)
         s += ';'
-        if n.next: s += ' ' + self.visit(n.next)
-        s += self._generate_stmt(n.stmt, add_indent=True)
+        multiple_nexts = False
+        if n.next:
+          nexts = ' ' + self.visit(n.next)
+          if "," in nexts:
+            s += ""
+            multiple_nexts = True
+          else:
+            s += nexts
+        genstmt = self._generate_stmt(n.stmt, add_indent=True)
+        if not genstmt.strip().startswith("{"):
+            s += " {"
+        if genstmt.strip() != "":
+            s += genstmt
+        if multiple_nexts:
+            # TODO: Fix this so that x++, y++ can work...
+            nexts = nexts.replace(",", ";")
+            s += "\n" + self._make_indent() + nexts.rstrip() + "\n"
+        if not s.strip().endswith("}"):
+            s += self._make_indent() + "}"
+        
         return s
 
     def visit_While(self, n):
         s = 'for ('
         if n.cond: s += self.visit(n.cond)
-        s += ')\n'
+        s += ') '
         s += self._generate_stmt(n.stmt, add_indent=True)
         return s
 
