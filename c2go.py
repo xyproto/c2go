@@ -171,7 +171,9 @@ class GoGenerator(object):
         s = n.name if no_type else self._generate_decl(n)
 
         found = False
-        #log("from: " + s)
+        log("from: " + s)
+        arraytype = ""
+        basetype = ""
         for t in REPLACEMENT_TYPES.keys():
           if s.startswith(t):
             twofirstwords = " ".join(s.split(" ", 2)[:2])
@@ -179,12 +181,20 @@ class GoGenerator(object):
               # don't match "int" if it could be an "int *"
               log("skipping: " + twofirstwords + " (of " + s + ")")
               continue
+            if s.endswith("]"):
+              arraytype = "[" + s.split("[", 1)[1]
+              s = s.replace(arraytype, "")
+              log("array: " + arraytype)
+
             s = s.replace(t, "", 1)
             s += " " + REPLACEMENT_TYPES[t]
+            l = s.rsplit(" ", 1)
+            s = l[0] + " " + arraytype + l[1]
             found = True
+            basetype = l[1]
             break
 
-        #log("changed to: " + s)
+        log("changed to: " + s + "\n")
 
         if not found:
           print("// visit_Decl strangeness: " + s + "\n")
@@ -214,6 +224,10 @@ class GoGenerator(object):
         else:
           # Remove "var " from function declaration
           s = s.replace("var ", "")
+
+        if arraytype and s.count("=") == 1 and "{" in s and "}" in s:
+          # We're defining an array on the fly, prepend the type
+          s = s.replace("{", arraytype + basetype + "{", 1)
 
         return s
     
