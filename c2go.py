@@ -45,6 +45,7 @@ REPLACEMENT_FUNCTIONS = {
 
 REPLACEMENT_TYPES = {
   "char *": "string",
+  "int *": "*int",
   "int": "int",
   "void": ""
 }
@@ -170,24 +171,23 @@ class GoGenerator(object):
         s = n.name if no_type else self._generate_decl(n)
 
         found = False
-        for t in REPLACEMENT_TYPES:
+        #log("from: " + s)
+        for t in REPLACEMENT_TYPES.keys():
           if s.startswith(t):
+            twofirstwords = " ".join(s.split(" ", 2)[:2])
+            if ("*" in twofirstwords) and ("*" not in t):
+              # don't match "int" if it could be an "int *"
+              log("skipping: " + twofirstwords + " (of " + s + ")")
+              continue
             s = s.replace(t, "", 1)
             s += " " + REPLACEMENT_TYPES[t]
             found = True
             break
 
-#        if s.startswith("char *"):
-#            s = s.replace("char *", "", 1)
-#            s += " string"
-#        elif s.startswith("void "):
-#            s = s.replace("void ", "", 1)
-#        elif s.startswith("int"):
-#            s = s.replace("int ", "", 1)
-#            s += " int"
+        #log("changed to: " + s)
 
         if not found:
-          print("// visit_Decl strangeness:", s, "\n")
+          print("// visit_Decl strangeness: " + s + "\n")
 
         if "(" in s:
           # We can guess that this is a function
@@ -562,6 +562,8 @@ def cleanup(data):
 
 def translate_to_go(filename):
 
+    clearlog()
+
     f = open(filename)
     data = f.read()
     f.close()
@@ -583,6 +585,10 @@ def translate_to_go(filename):
 def log(s):
   f = open("/tmp/c2go.log", "a")
   f.write(str(s) + "\n")
+  f.close()
+
+def clearlog():
+  f = open("/tmp/c2go.log", "w")
   f.close()
 
 #------------------------------------------------------------------------------
