@@ -9,4 +9,4 @@ all:
 	$(foreach x,$(APPS),6l -o $(x) $(x).6;)
 
 clean:
-	rm -f *.6 lextab.py yacctab.py $(APPS) $(GOSRC)
+	rm -f *.6 lextab.py yacctab.py $(APPS) $(GOSRC) core
