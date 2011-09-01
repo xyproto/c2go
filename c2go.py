@@ -271,10 +271,14 @@ class GoGenerator(object):
                 s += self.visit(ext)
             else:
                 s += self.visit(ext) + ';\n'
-                # This is just a function prototype
-                if s.strip().startswith("func") and ("{" not in s):
-                  # Delete this line
-                  s = ""
+                # This could be just a function prototype
+                for line in s.split("\n"):
+                  if line.strip().startswith("func") and ("{" not in s):
+                    # Delete this line
+                    log("Deleting: " + line)
+                    s = s.replace(line, "")
+                  elif "func" in s:
+                    log("Strange: " + s)
         return s
 
     def visit_Compound(self, n):
@@ -345,8 +349,6 @@ class GoGenerator(object):
               #
               # if it's just a lone variable, assume it is an int used as bool
               e = "" + e + " > 0" 
-          else:
-              open("/tmp/jeje", "a").write(e + "\n")
           s += e
         s += ';'
         multiple_nexts = False
@@ -578,6 +580,10 @@ def translate_to_go(filename):
 
     print(s)
 
+def log(s):
+  f = open("/tmp/c2go.log", "a")
+  f.write(str(s) + "\n")
+  f.close()
 
 #------------------------------------------------------------------------------
 if __name__ == "__main__":
