@@ -105,7 +105,15 @@ class GoGenerator(object):
 
     def visit_ArrayRef(self, n):
         arrref = self._parenthesize_unless_simple(n.name)
-        return arrref + '[' + self.visit(n.subscript) + ']'
+        contents = self.visit(n.subscript)
+        if "++" in contents or "--" in contents:
+          if "++" in contents:
+            op = "++"
+          else:
+            op = "--"
+          # TODO: Introduce inc and dec functions, or move it to another line
+          contents = "/* " + op + " does not return anything in Go! */ " + contents
+        return arrref + '[' + contents + ']'
 
     def visit_StructRef(self, n):
         sref = self._parenthesize_unless_simple(n.name)
@@ -171,7 +179,7 @@ class GoGenerator(object):
         s = n.name if no_type else self._generate_decl(n)
 
         found = False
-        log("from: " + s)
+        #log("from: " + s)
         arraytype = ""
         basetype = ""
         for t in REPLACEMENT_TYPES.keys():
@@ -179,12 +187,12 @@ class GoGenerator(object):
             twofirstwords = " ".join(s.split(" ", 2)[:2])
             if ("*" in twofirstwords) and ("*" not in t):
               # don't match "int" if it could be an "int *"
-              log("skipping: " + twofirstwords + " (of " + s + ")")
+              #log("skipping: " + twofirstwords + " (of " + s + ")")
               continue
             if s.endswith("]"):
               arraytype = "[" + s.split("[", 1)[1]
               s = s.replace(arraytype, "")
-              log("array: " + arraytype)
+              #log("array: " + arraytype)
 
             s = s.replace(t, "", 1)
             s += " " + REPLACEMENT_TYPES[t]
@@ -194,7 +202,7 @@ class GoGenerator(object):
             basetype = l[1]
             break
 
-        log("changed to: " + s + "\n")
+        #log("changed to: " + s + "\n")
 
         if not found:
           print("// visit_Decl strangeness: " + s + "\n")
@@ -289,10 +297,10 @@ class GoGenerator(object):
                 for line in s.split("\n"):
                   if line.strip().startswith("func") and ("{" not in s):
                     # Delete this line
-                    log("Deleting: " + line)
+                    #log("Deleting: " + line)
                     s = s.replace(line, "")
-                  elif "func" in s:
-                    log("Strange: " + s)
+                  #elif "func" in s:
+                  #  log("Strange: " + s)
         return s
 
     def visit_Compound(self, n):
@@ -399,9 +407,12 @@ class GoGenerator(object):
         s += self._generate_stmt(n.stmt, add_indent=True)
         # Remove the last "}" in s
         s = "}".join(s.split("}")[:-1])
-        s += self._make_indent() + 'if !('
-        if n.cond: s += self.visit(n.cond)
-        s += ') {break};\n'
+        if n.cond:
+            con = self.visit(n.cond)
+            if con != "1":
+                s += self._make_indent() + 'if !('
+                s += self.visit(n.cond)
+                s += ') {break};\n'
         s += self._make_indent() + "}"
         return s
 
