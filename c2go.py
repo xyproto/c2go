@@ -298,7 +298,15 @@ class GoGenerator(object):
     
     def visit_If(self, n):
         s = 'if ('
-        if n.cond: s += self.visit(n.cond)
+        if n.cond:
+          e = self.visit(n.cond)
+          if e.isalnum():
+              # TODO: Find out how to replace all variables that are evaluated
+              #       on their own with > 0, since ints are so often booleans
+              #
+              # if it's just a lone variable, assume it is an int used as bool
+              e = "" + e + " > 0" 
+          s += e
         s += ') {\n'
         s += self._generate_stmt(n.iftrue, add_indent=True)
         if n.iffalse: 
@@ -318,7 +326,17 @@ class GoGenerator(object):
           else:
               s += inits
         s += ';'
-        if n.cond: s += ' ' + self.visit(n.cond)
+        if n.cond:
+          e = self.visit(n.cond)
+          if e.isalnum():
+              # TODO: Find out how to replace all variables that are evaluated
+              #       on their own with > 0, since ints are so often booleans
+              #
+              # if it's just a lone variable, assume it is an int used as bool
+              e = "" + e + " > 0" 
+          else:
+              open("/tmp/jeje", "a").write(e + "\n")
+          s += e
         s += ';'
         multiple_nexts = False
         if n.next:
