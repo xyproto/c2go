@@ -147,7 +147,18 @@ class GoGenerator(object):
         rval_str = self._parenthesize_if(
                             n.rvalue, 
                             lambda n: isinstance(n, c_ast.Assignment))
-        return '%s %s %s' % (self.visit(n.lvalue), n.op, rval_str)
+        op = n.op
+        if "=" in rval_str:
+          # There is probably an assignment on the right side, not good
+          r = rval_str.strip()
+          if r.startswith("(") and r.endswith(")"):
+            rval_str = rval_str.split("(", 1)[1].rsplit(")", 1)[0]
+          # Convert a = (b = 1) to a, b = 1, 1
+          # TODO: This covers some code, but not everything, make it more general
+          if (op == "=") and ("=" in rval_str):
+            op = ", "
+            rval_str += "," + rval_str.split("=")[1]
+        return '%s %s %s' % (self.visit(n.lvalue), op, rval_str)
     
     def visit_IdentifierType(self, n):
         return ' '.join(n.names)
