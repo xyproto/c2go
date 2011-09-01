@@ -293,19 +293,18 @@ class GoGenerator(object):
         return 'continue;'
     
     def visit_TernaryOp(self, n):
-        s = self.visit(n.cond) + ' ? '
-        s += self.visit(n.iftrue) + ' : '
-        s += self.visit(n.iffalse)
+        s = "map[bool]" + n.iftrue.type + "{true: " + self.visit(n.iftrue) + ", false: " + self.visit(n.iffalse) + "}[" + self.visit(n.cond) + "]"
         return s
     
     def visit_If(self, n):
         s = 'if ('
         if n.cond: s += self.visit(n.cond)
-        s += ')\n'
+        s += ') {\n'
         s += self._generate_stmt(n.iftrue, add_indent=True)
         if n.iffalse: 
-            s += self._make_indent() + 'else\n'
+            s += self._make_indent() + '} else {\n'
             s += self._generate_stmt(n.iffalse, add_indent=True)
+        s += self._make_indent() + "}"
         return s
     
     def visit_For(self, n):
@@ -319,18 +318,21 @@ class GoGenerator(object):
         return s
 
     def visit_While(self, n):
-        s = 'while ('
+        s = 'for ('
         if n.cond: s += self.visit(n.cond)
         s += ')\n'
         s += self._generate_stmt(n.stmt, add_indent=True)
         return s
 
     def visit_DoWhile(self, n):
-        s = 'do\n'
+        s = 'for'
         s += self._generate_stmt(n.stmt, add_indent=True)
-        s += self._make_indent() + 'while ('
+        # Remove the last "}" in s
+        s = "}".join(s.split("}")[:-1])
+        s += self._make_indent() + 'if !('
         if n.cond: s += self.visit(n.cond)
-        s += ');'
+        s += ') {break};\n'
+        s += self._make_indent() + "}"
         return s
 
     def visit_Switch(self, n):
