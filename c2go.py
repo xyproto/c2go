@@ -44,7 +44,8 @@ REPLACEMENT_FUNCTIONS = {
   "sprintf": "fmt.Sprintf",
   "stat": "syscall.Stat",
   "access": "syscall.Access",
-  "rand": "rand.Float64"
+  "rand": "rand.Float64",
+  "strlen": "len"
 }
 
 REPLACEMENT_TYPES = {
@@ -83,12 +84,15 @@ REPLACEMENT_DEFS = {
 }
 
 CUSTOM_FUNCTIONS = {
-    "strcpy": ["",         "func strcpy(a, b string) string {\t return a + b \n}"],
+    "strcpy": ["",         "func strcpy(a *string, b string) {\n\ta = &b\n}"],
     "atoi":   ["strconv",  "func atoi(a string) int {\n\tv, _ := strconv.Atoi(a)\n\treturn v\n}"],
     "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"],
     "getchar":["fmt",      'func getchar() byte {\n\tvar b byte\n\tfmt.Scanf("%c", &b)\n\treturn b\n}'],
     "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}'],
-    "abs":    ["",         'func abs(a int) int {\n\tif a >= 0 {\n\t\treturn a\n\t}\n\treturn -a\n}']
+    "abs":    ["",         'func abs(a int) int {\n\tif a >= 0 {\n\t\treturn a\n\t}\n\treturn -a\n}'],
+    "strcmp": ["",         'func strcmp(a, b string) int {\n\tif a == b {\n\t\treturn 0\n\t}\n\talen := len(a)\n\tblen := len(b)\n\tminlen := blen\n\tif alen < minlen {\n\t\tminlen = alen\n\t}\n\tfor i := 0; i < minlen; i++ {\n\t\tif a[i] > b[i] {\n\t\t\treturn 1\n\t\t} else if a[i] < b[i] {\n\t\t\treturn -1\n\t\t}\n\t}\n\tif alen > blen {\n\t\treturn 1\n\t}\n\treturn -1\n}']
+#    "strlen": ["",         'func strlen(a *string) int {\n\treturn len(*a)\n}']
+
 
 }
 
@@ -96,7 +100,10 @@ WHOLE_PROGRAM_REPLACEMENTS = {
     r'fmt.Printf("\n")': "fmt.Println()",
     "func main(argc int, argv *[]string) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
     "argv[": "argv[-1+",
-    "\n\n\n": "\n"
+    "\n\n\n": "\n",
+    # TODO: Find a sensible way to figure out when a program wants strings and when it wants byte arrays
+    "*[]byte": "string",
+    "*[128]byte = new([128]byte)": "*string"
 }
 
 class GoGenerator(object):
@@ -531,10 +538,6 @@ class GoGenerator(object):
         s += ';'
         if n.cond:
           e = self.visit(n.cond)
-          if e in self.vartypes:
-            log("HAS TYPE! " + e + " " + self.vartypes[e])
-          else:
-            log("OH NO!" + str(self.vartypes) + " has no " + e)
           if e.isalnum():
               # TODO: Find out how to replace all variables that are evaluated
               #       on their own with > 0, since ints are so often booleans
