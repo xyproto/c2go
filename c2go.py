@@ -87,7 +87,9 @@ CUSTOM_FUNCTIONS = {
     "atoi":   ["strconv",  "func atoi(a string) int {\n\tv, _ := strconv.Atoi(a)\n\treturn v\n}"],
     "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"],
     "getchar":["fmt",      'func getchar() byte {\n\tvar b byte\n\tfmt.Scanf("%c", &b)\n\treturn b\n}'],
-    "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}']
+    "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}'],
+    "abs":    ["",         'func abs(a int) int {\n\tif a >= 0 {\n\t\treturn a\n\t}\n\treturn -a\n}']
+
 }
 
 WHOLE_PROGRAM_REPLACEMENTS = {
