@@ -85,7 +85,9 @@ REPLACEMENT_DEFS = {
 CUSTOM_FUNCTIONS = {
     "strcpy": ["",         "func strcpy(a, b string) string {\t return a + b \n}"],
     "atoi":   ["strconv",  "func atoi(a string) int {\n\tv, _ := strconv.Atoi(a)\n\treturn v\n}"],
-    "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"]
+    "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"],
+    "getchar":["fmt",      'func getchar() byte {\n\tvar b byte\n\tfmt.Scanf("%c", &b)\n\treturn b\n}'],
+    "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}']
 }
 
 WHOLE_PROGRAM_REPLACEMENTS = {
