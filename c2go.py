@@ -40,10 +40,14 @@ from pycparser import c_parser, c_ast, parse_file
 
 REPLACEMENT_FUNCTIONS = {
   "printf": "fmt.Printf",
-  "scanf": "fmt.Scanf"
+  "scanf": "fmt.Scanf",
+  "sprintf": "fmt.Sprintf",
+  "stat": "syscall.Stat",
+  "access": "syscall.Access"
 }
 
 REPLACEMENT_TYPES = {
+  "static struct stat": "syscall.Stat_t",
   "char *": "string",
   "char": "byte",
   "unsigned char": "uint8",
@@ -62,6 +66,20 @@ REPLACEMENT_TYPES = {
   "long": "int32"
 }
 
+REPLACEMENT_MACROS = {
+    "S_ISDIR" : ["syscall", "(((", ") & syscall.S_IFMT) == syscall.S_IFDIR)"]
+}
+
+REPLACEMENT_DEFS = {
+    "F_OK" : 0,
+    "X_OK" : 1,
+    "W_OK" : 2,
+    "R_OK" : 4
+}
+
+CUSTOM_FUNCTIONS = {
+    "strcpy": "func strcpy(a, b string) string {\t return a + b \n}"
+}
 
 class GoGenerator(object):
     """ Uses the same visitor pattern as c_ast.NodeVisitor, but modified to
@@ -80,6 +98,12 @@ class GoGenerator(object):
         self.inmain = False
         # scopeless declarations
         self.vartypes = {}
+        # function name for the current function
+        self.current_function_name = ""
+        # some functions should return bool instead of int
+        self.should_return_bool_instead_of_int = []
+        # custom functions that has been used
+        self.used_custom_functions = []
 
     def _make_packagename(self):
       return "package main\n\n"
@@ -91,8 +115,16 @@ class GoGenerator(object):
       s += ")\n\n"
       return s
 
+    def _make_customfunc(self):
+      """Define custom functions"""
+      s = ""
+      for fun in self.used_custom_functions:
+        if fun in CUSTOM_FUNCTIONS:
+          s += CUSTOM_FUNCTIONS[fun] + "\n\n"
+      return s
+
     def make_header(self):
-      return self._make_packagename() + self._make_imports()
+      return self._make_packagename() + self._make_imports() + self._make_customfunc()
     
     def _make_indent(self):
         return ' ' * self.indent_level
@@ -132,17 +164,32 @@ class GoGenerator(object):
         return sref + n.type + self.visit(n.field)
 
     def visit_FuncCall(self, n):
+        s = ""
         fref = self._parenthesize_unless_simple(n.name)
-        replacements = REPLACEMENT_FUNCTIONS
         # Use the replacement table to convert from C to Go functions
-        if fref in replacements:
-          gofref = replacements[fref]
+        if fref in REPLACEMENT_FUNCTIONS:
+          gofref = REPLACEMENT_FUNCTIONS[fref]
           # ... and import the right package
           pkg = ".".join(gofref.split(".")[:-1])
           if pkg not in self.imports:
             self.imports.append(pkg)
           fref = gofref
-        return fref + '(' + self.visit(n.args) + ')'
+        elif fref in CUSTOM_FUNCTIONS:
+          if not fref in self.used_custom_functions:
+            self.used_custom_functions.append(fref)
+          #log("WANTS TO ENABLE CUSTOM FUNCTION: " + fref)
+        elif fref in REPLACEMENT_MACROS:
+          pkg, first_part, last_part = REPLACEMENT_MACROS[fref]
+          # ... and import the right package
+          if pkg not in self.imports:
+            self.imports.append(pkg)
+          s = first_part + self.visit(n.args) + last_part
+        if not s:
+          s = fref + '(' + self.visit(n.args) + ')'
+        for d in REPLACEMENT_DEFS:
+          if d in s:
+            s = s.replace(d, str(REPLACEMENT_DEFS[d]) + "/*" + d + "*/")
+        return s
 
     def visit_UnaryOp(self, n):
         operand = self._parenthesize_unless_simple(n.expr)
@@ -224,12 +271,14 @@ class GoGenerator(object):
         #log("changed to: " + s + "\n")
 
         if not found:
-          print("// visit_Decl strangeness: " + s + "\n")
+          print("// C2GO: Unconverted declaration: " + s.strip() + "\n")
+          return s.rstrip() + " // C2GO: ???"
 
         if "(" in s:
           # We can guess that this is a function
           s = "func " + s
           self.inmain = n.name == "main"
+          self.current_function_name = n.name
 
         if "(void)" in s:
           s = s.replace("(void)", "()", 1)
@@ -252,6 +301,9 @@ class GoGenerator(object):
           if "var long" in s:
             # There is no long double in Go (float128)
             s = s.replace("long", "", 1).replace("  ", " ")
+          if "var static struct" in s:
+            s = s.replace("var static struct", "struct", 1)
+            s = "var " + s.split(" ")[-1] + " " + " ".join(s.split(" ")[:-1])
           if ("[" in s) and ("]" in s):
             arraynumber = s.split("[", 1)[1].rsplit("]", 1)[0]
             if arraynumber:
@@ -271,7 +323,7 @@ class GoGenerator(object):
           #log(varname + " is of type: " + vartype)
         else:
           # Remove "var " from function declaration
-          s = s.replace("var ", "")
+          s = s.replace("var ", "").replace("  ", " ")
           # Remove "= new" from function declaration
           removefrom = " = new"
           removeto = ")" # including
@@ -377,8 +429,13 @@ class GoGenerator(object):
           # Go has no return in main
           return ''
         s = 'return'
-        if n.expr: s += ' ' + self.visit(n.expr)
-        return s + ''
+        if n.expr:
+          s += ' ' + self.visit(n.expr)
+        if ("==" in s) or (">" in s) or ("<" in s) or (">=" in s) or ("<=" in s) or ("!=" in s):
+          #log("This function should really return a bool instead! " + self.current_function_name)
+          if not self.current_function_name in self.should_return_bool_instead_of_int:
+            self.should_return_bool_instead_of_int.append(self.current_function_name)
+        return s
 
     def visit_Break(self, n):
         return 'break;'
@@ -399,6 +456,18 @@ class GoGenerator(object):
           s = "map[int]" + n.iftrue.type + "{1: " + self.visit(n.iftrue) + ", 0: " + self.visit(n.iffalse) + "}[" + condition + "]"
         return s
     
+    def _remove_curly_blank_lines(self, s):
+      """Remove curly brackets at beginning and at end, remove blank lines"""
+      s = s.replace("{", "", 1)
+      s = s.rsplit("}", 1)[0]
+      lines = s.split("\n")
+      bodylines = []
+      for line in lines:
+        if line.strip() != "":
+          bodylines.append(line)
+      s = "\n".join(bodylines) + "\n"
+      return s
+    
     def visit_If(self, n):
         s = 'if ('
         if n.cond:
@@ -411,11 +480,20 @@ class GoGenerator(object):
               e = "" + e + " > 0" 
           s += e
         s += ') {\n'
-        s += self._generate_stmt(n.iftrue, add_indent=True)
+        if_body_true = self._generate_stmt(n.iftrue, add_indent=True)
+        if if_body_true.strip().startswith("{"):
+          if_body_true = self._remove_curly_blank_lines(if_body_true)
+        s += if_body_true
         if n.iffalse: 
-            s += self._make_indent() + '} else {\n'
-            s += self._generate_stmt(n.iffalse, add_indent=True)
+            else_between = self._make_indent() + '} else {\n'
+            if_body_false = self._generate_stmt(n.iffalse, add_indent=True)
+            if if_body_false.strip().startswith("{"):
+              if_body_false = self._remove_curly_blank_lines(if_body_false)
+            # Only add the "else" part if it is not empty
+            if if_body_false.strip() != "":
+              s += else_between + if_body_false
         s += self._make_indent() + "}"
+        
         return s
     
     def visit_For(self, n):
@@ -640,6 +718,19 @@ class GoGenerator(object):
         return isinstance(n,(   c_ast.Constant, c_ast.ID, c_ast.ArrayRef, 
                                 c_ast.StructRef, c_ast.FuncCall))
 
+    def fix_int_to_bool(self, s):
+      #log("Fix int to bool")
+      for fn in self.should_return_bool_instead_of_int:
+        pos = s.find("func " + fn)
+        #log("Found " + fn + " at " + str(pos))
+        eolpos = s.find("\n", pos)
+        #log("Found eol at " + str(eolpos))
+        intpos = s.rfind(" int ", pos, eolpos)
+        if intpos < eolpos:
+          #log("This is an int function, yes! " + str(pos) + " " + str(intpos) + " " + str(eolpos))
+          #log(s[intpos:eolpos])
+          s = s[:intpos] + "bool" + s[intpos+4:]
+      return s
 
 def cleanup(data):
   lines = []
@@ -670,6 +761,7 @@ def translate_to_go(filename):
     generator = GoGenerator()
     s = generator.visit(ast)
     s = generator.make_header() + s
+    s = generator.fix_int_to_bool(s)
 
     print(s)
 
