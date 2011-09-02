@@ -531,12 +531,35 @@ class GoGenerator(object):
         s += ';'
         if n.cond:
           e = self.visit(n.cond)
+          if e in self.vartypes:
+            log("HAS TYPE! " + e + " " + self.vartypes[e])
+          else:
+            log("OH NO!" + str(self.vartypes) + " has no " + e)
           if e.isalnum():
               # TODO: Find out how to replace all variables that are evaluated
               #       on their own with > 0, since ints are so often booleans
               #
               # if it's just a lone variable, assume it is an int used as bool
-              e = "" + e + " > 0" 
+              e = e + " > 0" 
+          else:
+            # Just handle a few simple and common cases
+            # TODO: Find a proper fix for integers in boolean expressions
+            if ("&&" in e) or ("||" in e):
+              if e.count("&&") == 1:
+                if e.split("&&")[0].strip().isalpha():
+                  word = e.split("&&")[0].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+                elif e.split("&&")[1].strip().isalpha():
+                  word = e.split("&&")[1].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+              elif e.count("||") == 1:
+                if e.split("||")[0].strip().isalpha():
+                  word = e.split("&&")[0].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+                elif e.split("||")[1].strip().isalpha():
+                  word = e.split("&&")[1].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+
           s += e
         s += ';'
         multiple_nexts = False
