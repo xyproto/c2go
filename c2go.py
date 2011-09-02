@@ -45,9 +45,21 @@ REPLACEMENT_FUNCTIONS = {
 
 REPLACEMENT_TYPES = {
   "char *": "string",
+  "char": "byte",
+  "unsigned char": "uint8",
   "int *": "*int",
   "int": "int",
-  "void": ""
+  "unsigned int": "uint",
+  "unsigned int *": "*uint",
+  "void": "",
+  "short": "int16",
+  "short *": "*int16",
+  "unsigned short": "uint16",
+  "unsigned short *": "*uint16",
+  "float": "float32",
+  "float *": "*float32",
+  "double": "float64",
+  "long": "int32"
 }
 
 
@@ -66,8 +78,8 @@ class GoGenerator(object):
         self.imports = []
         # in main()
         self.inmain = False
-        # in a function declaration
-        self.infunc = False
+        # scopeless declarations
+        self.vartypes = {}
 
     def _make_packagename(self):
       return "package main\n\n"
@@ -141,7 +153,9 @@ class GoGenerator(object):
         elif n.op == 'sizeof':
             # Always parenthesize the argument of sizeof since it can be 
             # a name.
-            return 'sizeof(%s)' % self.visit(n.expr)
+            if not "unsafe" in self.imports:
+              self.imports.append("unsafe")
+            return 'unsafe.Sizeof(%s)' % self.visit(n.expr)
         else:
             return '%s%s' % (n.op, operand)
 
@@ -183,7 +197,8 @@ class GoGenerator(object):
         #log("from: " + s)
         arraytype = ""
         basetype = ""
-        for t in REPLACEMENT_TYPES.keys():
+        repl_keys = REPLACEMENT_TYPES.keys()
+        for t in repl_keys:
           if s.startswith(t):
             twofirstwords = " ".join(s.split(" ", 2)[:2])
             if ("*" in twofirstwords) and ("*" not in t):
@@ -233,6 +248,10 @@ class GoGenerator(object):
         if not s.strip().startswith("func"):
           # Assume it's a variable declaration
           s = "var " + s
+          s = s.replace("  ", " ")
+          if "var long" in s:
+            # There is no long double in Go (float128)
+            s = s.replace("long", "", 1).replace("  ", " ")
           if ("[" in s) and ("]" in s):
             arraynumber = s.split("[", 1)[1].rsplit("]", 1)[0]
             if arraynumber:
@@ -241,8 +260,15 @@ class GoGenerator(object):
                 s += " = new(" + arraytype + basetype + ")"
               elif ("=" in s) and ("{" in s):
                 add_addr_of = True
-
-              #s += " = new(" + arraytype + ")"
+          #log("DECLARING: " + s)
+          if "=" in s:
+            vartype = s.split("=")[0].strip().split(" ")[-1]
+          else:
+            vartype = s.split(" ")[-1]
+          varname = s.split(" ")[1]
+          # Storing the type for later reference (by visit_Ternary, for example)
+          self.vartypes[varname] = vartype
+          #log(varname + " is of type: " + vartype)
         else:
           # Remove "var " from function declaration
           s = s.replace("var ", "")
@@ -361,7 +387,16 @@ class GoGenerator(object):
         return 'continue;'
     
     def visit_TernaryOp(self, n):
-        s = "map[bool]" + n.iftrue.type + "{true: " + self.visit(n.iftrue) + ", false: " + self.visit(n.iffalse) + "}[" + self.visit(n.cond) + "]"
+        # Look at the type for the variable in n.conf if it's only one variable, find the type from the hashtable for types
+        condition = self.visit(n.cond).strip()
+        ctype = "bool"
+        if condition in self.vartypes:
+          ctype = self.vartypes[condition]
+          #log(condition + " is of type " + ctype)
+        if ctype == "bool":
+          s = "map[bool]" + n.iftrue.type + "{true: " + self.visit(n.iftrue) + ", false: " + self.visit(n.iffalse) + "}[" + condition + "]"
+        elif ctype == "int":
+          s = "map[int]" + n.iftrue.type + "{1: " + self.visit(n.iftrue) + ", 0: " + self.visit(n.iffalse) + "}[" + condition + "]"
         return s
     
     def visit_If(self, n):
