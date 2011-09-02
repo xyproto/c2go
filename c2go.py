@@ -43,7 +43,8 @@ REPLACEMENT_FUNCTIONS = {
   "scanf": "fmt.Scanf",
   "sprintf": "fmt.Sprintf",
   "stat": "syscall.Stat",
-  "access": "syscall.Access"
+  "access": "syscall.Access",
+  "rand": "rand.Float64"
 }
 
 REPLACEMENT_TYPES = {
@@ -123,7 +124,8 @@ class GoGenerator(object):
     def _make_imports(self):
       s = "import (\n"
       for imp in self.imports:
-        s += "  \"%s\"\n" % (imp)
+        if imp:
+          s += "  \"%s\"\n" % (imp)
       s += ")\n\n"
       return s
 

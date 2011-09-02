@@ -1,0 +1,46 @@
+package main
+
+import (
+	"rand"
+	"fmt"
+)
+
+func rpermute(n int) []int {
+  a := make([]int, n)
+	//var a *int = malloc(n * (unsafe.Sizeof(int)))
+	var k int
+	for k = 0; k < n; k++ {
+		a[k] = k
+	}
+	for k = n - 1; k > 0; k-- {
+		var j int = rand.Intn(k + 1) // rand() % (k + 1)
+		var temp int = a[j]
+		a[j] = a[k]
+		a[k] = temp
+	}
+	return a
+}
+
+func printarray(n int, a []int) {
+	var k int = 0
+	for k = 0; k < n; k++ {
+		fmt.Printf("%6d   ", a[k])
+		if (k % 8) == 7 {
+			fmt.Println()
+		}
+	}
+
+}
+
+func main() {
+	var limit int = 6
+	var a []int
+	var k int
+	for k = 0; k < 7; k++ {
+		a = rpermute(limit)
+		printarray(limit, a)
+		fmt.Println()
+	}
+
+	return
+}
