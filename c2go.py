@@ -93,7 +93,8 @@ CUSTOM_FUNCTIONS = {
 WHOLE_PROGRAM_REPLACEMENTS = {
     r'fmt.Printf("\n")': "fmt.Println()",
     "func main(argc int, argv *[]string) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
-    "argv[": "argv[-1+"
+    "argv[": "argv[-1+",
+    "\n\n\n": "\n"
 }
 
 class GoGenerator(object):
@@ -171,8 +172,8 @@ class GoGenerator(object):
             op = "++"
           else:
             op = "--"
-          # TODO: Introduce inc and dec functions, or move it to another line
-          contents = "/* " + op + " does not return anything in Go! */ " + contents
+          # Insert markers to move the ++/-- expression down or up at a later stage
+          contents = "$$$" + contents + "$$$"
         return arrref + '[' + contents + ']'
 
     def visit_StructRef(self, n):
@@ -546,14 +547,14 @@ class GoGenerator(object):
             s += nexts
         genstmt = self._generate_stmt(n.stmt, add_indent=True)
         if not genstmt.strip().startswith("{"):
-            s += " {"
+            s += " {\n"
         if genstmt.strip() != "":
             s += genstmt
         if multiple_nexts:
             # TODO: Fix this so that x++, y++ can work...
             nexts = nexts.replace(",", ";")
             s += "\n" + self._make_indent() + nexts.rstrip() + "\n"
-        if not s.strip().endswith("}"):
+        if s.count("}") < s.count("{"):
             s += self._make_indent() + "}"
         
         return s
@@ -750,6 +751,37 @@ class GoGenerator(object):
             if "flag" not in self.imports:
               self.imports.append("flag")
           s = s.replace(r, newstring)
+      # Fix ++ and --
+      while s.count("$$$") > 0:
+        pos1 = s.find("$$$") + 3
+        pos2 = s.find("$$$", pos1)
+        contents = s[pos1:pos2]
+        fixed_cont = contents.replace("++", "").replace("--", "")
+        s = s.replace("$$$" + contents + "$$$", fixed_cont)
+        #log("fixed cont: " + fixed_cont)
+        #log("cont: " + contents)
+        #log(str(s.count("$$$")) + "!!!!!!")
+
+        line = s[s.rfind("\n", 0, pos1)+1:s.find("\n", pos1)]
+        #log("LINE: " + line)
+        whitespace = line[:len(line) - len(line.lstrip())]
+        #log("WHITESPACE LEN: " + str(len(whitespace)))
+
+        # Ok, we have removed ++ or -- from the line, let's add it again on the line above or below
+        contents = contents.strip()
+        if contents.startswith("++") or contents.startswith("--"):
+          # insert pos should be the line above
+          inspos = s.rfind("\n", 0, pos1) + 1
+          if contents.startswith("++"):
+            contents = contents.replace("++", "") + "++"
+          elif contents.startswith("--"):
+            contents = contents.replace("--", "") + "--"
+          s = s[:inspos] + whitespace + contents + "\n" + s[inspos:]
+        elif contents.endswith("++") or contents.endswith("--"):
+          # insert pos should be the line below
+          inspos = s.find("\n", pos1) + 1
+          s = s[:inspos] + whitespace + contents + "\n" + s[inspos:]
+        #break
       return s
 
     def fix_int_to_bool(self, s):
