@@ -7,6 +7,7 @@ all:
 	$(foreach x,$(APPS),gofmt -w $(x).go;)
 	$(foreach x,$(APPS),6g $(x).go;)
 	$(foreach x,$(APPS),6l -o $(x) $(x).6;)
+	@echo All else went fine
 
 clean:
 	rm -f *.6 lextab.py yacctab.py $(APPS) $(GOSRC) core
