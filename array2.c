@@ -14,9 +14,6 @@ int main(void) {
   int x[NMAX];
   int hmny;
 
-  /* C2GO */
-  printf("This program compiles, but the array-conversion needs more work!\n\n");
-
   hmny = getIntArray(x, NMAX, 0);
   printf("The array was: \n");
   printIntArray(x,hmny);

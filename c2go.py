@@ -177,7 +177,8 @@ class GoGenerator(object):
         # explicitly only for the first delaration in a list.
         #
         s = n.name if no_type else self._generate_decl(n)
-
+        
+        add_addr_of = False
         found = False
         #log("from: " + s)
         arraytype = ""
@@ -235,7 +236,12 @@ class GoGenerator(object):
           if ("[" in s) and ("]" in s):
             arraynumber = s.split("[", 1)[1].rsplit("]", 1)[0]
             if arraynumber:
-              s += " = new(" + arraytype + basetype + ")"
+              #log("!!!" + s)
+              if "=" not in s:
+                s += " = new(" + arraytype + basetype + ")"
+              elif ("=" in s) and ("{" in s):
+                add_addr_of = True
+
               #s += " = new(" + arraytype + ")"
         else:
           # Remove "var " from function declaration
@@ -257,6 +263,10 @@ class GoGenerator(object):
         if arraytype and s.count("=") == 1 and "{" in s and "}" in s:
           # We're defining an array on the fly, prepend the type
           s = s.replace("{", arraytype + basetype + "{", 1)
+
+        # Use pointers to arrays for C arrays, also when declared with assignment
+        if ("=" in s) and ("{" in s) and add_addr_of:
+          s = s.replace("= [", "= &[")
 
         return s
     
