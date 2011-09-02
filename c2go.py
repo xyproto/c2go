@@ -758,14 +758,9 @@ class GoGenerator(object):
         contents = s[pos1:pos2]
         fixed_cont = contents.replace("++", "").replace("--", "")
         s = s.replace("$$$" + contents + "$$$", fixed_cont)
-        #log("fixed cont: " + fixed_cont)
-        #log("cont: " + contents)
-        #log(str(s.count("$$$")) + "!!!!!!")
 
         line = s[s.rfind("\n", 0, pos1)+1:s.find("\n", pos1)]
-        #log("LINE: " + line)
         whitespace = line[:len(line) - len(line.lstrip())]
-        #log("WHITESPACE LEN: " + str(len(whitespace)))
 
         # Ok, we have removed ++ or -- from the line, let's add it again on the line above or below
         contents = contents.strip()
@@ -782,6 +777,17 @@ class GoGenerator(object):
           inspos = s.find("\n", pos1) + 1
           s = s[:inspos] + whitespace + contents + "\n" + s[inspos:]
         #break
+      # Use fmt.Println instead of fmt.Printf ... \n
+      for fix in range(s.count("fmt.Printf(")):
+        pos = s.find("fmt.Printf(")
+        eolpos = s.find("\n", pos)
+        contents = s[pos:eolpos]
+        if contents.strip().endswith("\\n\")") and contents.count("\"") == 2:
+          #log("FOUND: " + contents)
+          newcontents = contents.replace("fmt.Printf(", "fmt.Println(", 1).replace("\\n\")", "\")", 1)
+          #log("NEWCONTENTS: " + newcontents)
+          s = s[:pos] + newcontents + s[eolpos:]
+
       return s
 
     def fix_int_to_bool(self, s):
