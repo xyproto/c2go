@@ -197,7 +197,10 @@ class GoGenerator(object):
             s = s.replace(t, "", 1)
             s += " " + REPLACEMENT_TYPES[t]
             l = s.rsplit(" ", 1)
-            s = l[0] + " " + arraytype + l[1]
+            arraystar = ""
+            if ("[" in arraytype) and ("]" in arraytype):
+              arraystar = "*"
+            s = l[0] + " " + arraystar + arraytype + l[1]
             found = True
             basetype = l[1]
             break
@@ -227,11 +230,29 @@ class GoGenerator(object):
                 s += ' = ' + self.visit(n.init)
          
         if not s.strip().startswith("func"):
-          # Assume it's a variable
+          # Assume it's a variable declaration
           s = "var " + s
+          if ("[" in s) and ("]" in s):
+            arraynumber = s.split("[", 1)[1].rsplit("]", 1)[0]
+            if arraynumber:
+              s += " = new(" + arraytype + basetype + ")"
+              #s += " = new(" + arraytype + ")"
         else:
           # Remove "var " from function declaration
           s = s.replace("var ", "")
+          # Remove "= new" from function declaration
+          removefrom = " = new"
+          removeto = ")" # including
+          if removefrom in s:
+            remove_n = s.count(removefrom)
+            for n in range(remove_n):
+              pos = s.find(removefrom)
+              #log("Remove from =new to ) at pos: " + str(pos))
+              pos2 = s.find(removeto, pos)
+              #log("to pos: " + str(pos2))
+              #log("pre removal: " + s)
+              s = s[:pos] + s[pos2+len(removeto):]
+              #log("post removal: " + s)
 
         if arraytype and s.count("=") == 1 and "{" in s and "}" in s:
           # We're defining an array on the fly, prepend the type
