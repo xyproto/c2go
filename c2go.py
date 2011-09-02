@@ -63,7 +63,11 @@ REPLACEMENT_TYPES = {
   "float": "float32",
   "float *": "*float32",
   "double": "float64",
-  "long": "int32"
+  # TODO: check if int is int32 in Go
+  "long": "int",
+  # TODO: Needs a better plan for static
+  "static long": "int",
+  "static int": "int"
 }
 
 REPLACEMENT_MACROS = {
@@ -78,7 +82,15 @@ REPLACEMENT_DEFS = {
 }
 
 CUSTOM_FUNCTIONS = {
-    "strcpy": "func strcpy(a, b string) string {\t return a + b \n}"
+    "strcpy": ["",         "func strcpy(a, b string) string {\t return a + b \n}"],
+    "atoi":   ["strconv",  "func atoi(a string) int {\n\tv, _ := strconv.Atoi(a)\n\treturn v\n}"],
+    "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"]
+}
+
+WHOLE_PROGRAM_REPLACEMENTS = {
+    r'fmt.Printf("\n")': "fmt.Println()",
+    "func main(argc int, argv *[]string) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
+    "argv[": "argv[-1+"
 }
 
 class GoGenerator(object):
@@ -120,7 +132,7 @@ class GoGenerator(object):
       s = ""
       for fun in self.used_custom_functions:
         if fun in CUSTOM_FUNCTIONS:
-          s += CUSTOM_FUNCTIONS[fun] + "\n\n"
+          s += CUSTOM_FUNCTIONS[fun][1] + "\n\n"
       return s
 
     def make_header(self):
@@ -177,6 +189,9 @@ class GoGenerator(object):
         elif fref in CUSTOM_FUNCTIONS:
           if not fref in self.used_custom_functions:
             self.used_custom_functions.append(fref)
+            pkg = CUSTOM_FUNCTIONS[fref][0]
+            if pkg not in self.imports:
+              self.imports.append(pkg)
           #log("WANTS TO ENABLE CUSTOM FUNCTION: " + fref)
         elif fref in REPLACEMENT_MACROS:
           pkg, first_part, last_part = REPLACEMENT_MACROS[fref]
@@ -425,10 +440,10 @@ class GoGenerator(object):
         return ', '.join(self.visit(param) for param in n.params)
 
     def visit_Return(self, n):
-        if self.inmain:
-          # Go has no return in main
-          return ''
         s = 'return'
+        if self.inmain:
+          # Go can return in main, but not with a value
+          return s
         if n.expr:
           s += ' ' + self.visit(n.expr)
         if ("==" in s) or (">" in s) or ("<" in s) or (">=" in s) or ("<=" in s) or ("!=" in s):
@@ -718,6 +733,21 @@ class GoGenerator(object):
         return isinstance(n,(   c_ast.Constant, c_ast.ID, c_ast.ArrayRef, 
                                 c_ast.StructRef, c_ast.FuncCall))
 
+    def last_minute_replacements(self, s, firstname):
+      # Insert the filename without extension as argv[0]
+      if "argv[0]" in s:
+        s = s.replace("argv[0]", '"' + firstname + '"')
+      # Make replacements all over
+      for r in WHOLE_PROGRAM_REPLACEMENTS:
+        if r in s:
+          newstring = WHOLE_PROGRAM_REPLACEMENTS[r]
+          # Special cases
+          if "flag.Args" in newstring:
+            if "flag" not in self.imports:
+              self.imports.append("flag")
+          s = s.replace(r, newstring)
+      return s
+
     def fix_int_to_bool(self, s):
       #log("Fix int to bool")
       for fn in self.should_return_bool_instead_of_int:
@@ -744,6 +774,10 @@ def cleanup(data):
 
 def translate_to_go(filename):
 
+    firstname = filename 
+    if "." in filename:
+      firstname = filename.rsplit(".", 1)[0]
+
     clearlog()
 
     f = open(filename)
@@ -760,8 +794,9 @@ def translate_to_go(filename):
     ast = parse_file(filename, use_cpp=True)
     generator = GoGenerator()
     s = generator.visit(ast)
-    s = generator.make_header() + s
     s = generator.fix_int_to_bool(s)
+    s = generator.last_minute_replacements(s, firstname)
+    s = generator.make_header() + s
 
     print(s)
 
