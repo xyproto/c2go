@@ -100,10 +100,13 @@ WHOLE_PROGRAM_REPLACEMENTS = {
     r'fmt.Printf("\n")': "fmt.Println()",
     "func main(argc int, argv *[]string) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
     "argv[": "argv[-1+",
+    "for (1)": "for",
     "\n\n\n": "\n",
     # TODO: Find a sensible way to figure out when a program wants strings and when it wants byte arrays
-    "*[]byte": "string",
-    "*[128]byte = new([128]byte)": "*string"
+    "*[]byte": "*string",
+    "*[128]byte = new([128]byte)": "*string",
+    #
+    "'\\0'": "'\\x00'"
 }
 
 class GoGenerator(object):
@@ -129,6 +132,8 @@ class GoGenerator(object):
         self.should_return_bool_instead_of_int = []
         # custom functions that has been used
         self.used_custom_functions = []
+        # variables that has to be renamed
+        self.renames = {}
 
     def _make_packagename(self):
       return "package main\n\n"
@@ -171,7 +176,10 @@ class GoGenerator(object):
         return n.value
         
     def visit_ID(self, n):
-        return n.name
+        name = n.name
+        if name in self.renames:
+          return self.renames[name]
+        return name
 
     def visit_ArrayRef(self, n):
         arrref = self._parenthesize_unless_simple(n.name)
@@ -257,7 +265,24 @@ class GoGenerator(object):
           if (op == "=") and ("=" in rval_str):
             op = ", "
             rval_str += "," + rval_str.split("=")[1]
-        return '%s %s %s' % (self.visit(n.lvalue), op, rval_str)
+        lvalue = self.visit(n.lvalue)
+        if "[" in lvalue:
+          name = lvalue.split("[")[0].strip()
+          if name in self.vartypes:
+            type = self.vartypes[name]
+            log(name + " is " + type)
+            if type in ["*string", "*[]byte"]:
+              pos = lvalue.split("[")[1].split("]")[0]
+              #lvalue = "*" + name
+              #name = "(*" + name + ")"
+              # This doesn't work
+              #rvalue = name + "[:" + pos + "] + string(" + rval_str + ") + " + name + "[" + pos + "+1:]"
+              #rval_str = rvalue
+          #if name in self.vartypes:
+          #  log(lvalue + " IS " + self.vartypes[lvalue] + "!!!")
+          #  if self.vartypes[lvalue] == "*string":
+          #    log("STRING! " + lvalue)
+        return '%s %s %s' % (lvalue, op, rval_str)
     
     def visit_IdentifierType(self, n):
         return ' '.join(n.names)
@@ -267,7 +292,7 @@ class GoGenerator(object):
         # explicitly only for the first delaration in a list.
         #
         s = n.name if no_type else self._generate_decl(n)
-        
+
         add_addr_of = False
         found = False
         #log("from: " + s)
@@ -347,6 +372,12 @@ class GoGenerator(object):
           else:
             vartype = s.split(" ")[-1]
           varname = s.split(" ")[1]
+          if varname in ["len"]: # is varname a Go keyword?
+            oldvarname = varname
+            varname = varname + "_" + varname
+            self.renames[oldvarname] = varname
+            #log("RENAME FROM " + oldvarname + " TO " + varname)
+            s = s.replace(oldvarname, varname)
           # Storing the type for later reference (by visit_Ternary, for example)
           self.vartypes[varname] = vartype
           #log(varname + " is of type: " + vartype)
@@ -562,7 +593,6 @@ class GoGenerator(object):
                 elif e.split("||")[1].strip().isalpha():
                   word = e.split("&&")[1].strip()
                   e = e.replace(word, "(" + word + " > 0)", 1)
-
           s += e
         s += ';'
         multiple_nexts = False
@@ -589,9 +619,49 @@ class GoGenerator(object):
 
     def visit_While(self, n):
         s = 'for ('
-        if n.cond: s += self.visit(n.cond)
+        if n.cond:
+          pexp = ""
+          cond = self.visit(n.cond)
+          if "=" in cond:
+            # If the assignment is surrounded by (), pick it out and put it
+            # above the for-loop and befor the last } in the for loop.
+            # Replace the () with the left side of the assignment.
+            log("assignment in cond!")
+            apos = cond.find("=")
+            pos1 = cond.rfind("(", 0, apos)
+            # find matching ) for the one at pos 1
+            inside = 1
+            found = False
+            for i, c in enumerate(cond):
+              #log("POS: " + str(i) + " INSIDE: " + str(inside))
+              if i <= apos:
+                continue
+              if c == "(":
+                inside += 1
+              elif c == ")":
+                inside -= 1
+              if inside == 0:
+                pos2 = i
+                found = True
+                break
+            if found:
+              pexp = cond[pos1+1:pos2]
+              #log("PEXP: " + pexp)
+              left = pexp.split("=")[0].strip()
+              cond = cond.replace(pexp, left)
+              s = pexp + "\n" + self._make_indent() + s
+          s += cond
         s += ') '
-        s += self._generate_stmt(n.stmt, add_indent=True)
+        body = self._generate_stmt(n.stmt, add_indent=True)
+        # TODO: Create a function of the curly-bracket fix
+        if pexp:
+          body += self._make_indent() + pexp
+        if not body.strip().startswith("{"):
+            s += " {\n"
+        if body.strip() != "":
+            s += body
+        if s.count("}") < s.count("{"):
+            s += self._make_indent() + "}"
         return s
 
     def visit_DoWhile(self, n):
