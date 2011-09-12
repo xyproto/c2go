@@ -28,8 +28,9 @@
 #-----------------------------------------------------------------
 
 from __future__ import print_function
-import tempfile
+#import tempfile
 import sys
+import os
 
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
@@ -85,10 +86,11 @@ CUSTOM_FUNCTIONS = {
     "getchar":["fmt",      'func getchar() byte {\n\tvar b byte\n\tfmt.Scanf("%c", &b)\n\treturn b\n}'],
     "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}'],
     "abs":    ["",         'func abs(a int) int {\n\tif a >= 0 {\n\t\treturn a\n\t}\n\treturn -a\n}'],
-    "strcpy": ["CString",  "func strcpy(a *CString, b CString) {\n\ta = &b\n}"],
+    "strcpy": ["CString",  "func strcpy(a *CString, b CString) {\n\t*a = b\n}"],
     "strcmp": ["CString",  'func strcmp(acs, bcs CString) int {\n\ta := acs.ToString()\n\tb := bcs.ToString()\n\tif a == b {\n\t\treturn 0\n\t}\n\talen := len(a)\n\tblen := len(b)\n\tminlen := blen\n\tif alen < minlen {\n\t\tminlen = alen\n\t}\n\tfor i := 0; i < minlen; i++ {\n\t\tif a[i] > b[i] {\n\t\t\treturn 1\n\t\t} else if a[i] < b[i] {\n\t\t\treturn -1\n\t\t}\n\t}\n\tif alen > blen {\n\t\treturn 1\n\t}\n\treturn -1\n}'],
     "strlen": ["CString",  'func strlen(c CString) int {\n\treturn len(c.ToString())\n}'],
-    "printf": ["fmt", "func printf(format CString, a ...interface{}) {\n\tfmt.Printf(format.ToString(), a...)\n}"]
+    "printf": ["fmt",      "func printf(format CString, a ...interface{}) {\n\tfmt.Printf(format.ToString(), a...)\n}"],
+    "scanf":  ["fmt",      "func scanf(format CString, a ...interface{}) {\n\tfmt.Scanf(format.ToString(), a...)\n}"]
 }
 
 SKIP_INCLUDES = ["CString"]
@@ -147,7 +149,7 @@ class GoGenerator(object):
       """Define custom functions"""
       s = ""
       if "CString" in self.imports:
-        s += "type CString []byte\n\nfunc (c CString) ToString() string {\n\ts := \"\"\n\tfor _, e := range c {\n\t\tif e == 0 {\n\t\t\t\tbreak\n\t\t}\n\t\ts += string(e)\n\t}\n\treturn s\n}\n\nfunc NewCString(s string) CString {\n\tc := make(CString, len(s)+1)\n\tfor i, e := range s {\n\t\tc[i] = byte(e)\n\t}\n\t// The last byte will already be 0\n\treturn c\n}\n\n"
+        s += "type CString []byte\n\nfunc (c CString) ToString() string {\n\ts := \"\"\n\tfor _, e := range c {\n\t\tif e == 0 {\n\t\t\t\tbreak\n\t\t}\n\t\ts += string(e)\n\t}\n\treturn s\n}\n\nfunc cstr(s string) CString {\n\tc := make(CString, len(s)+1)\n\tfor i, e := range s {\n\t\tc[i] = byte(e)\n\t}\n\t// The last byte will already be 0\n\treturn c\n}\n\nfunc cstrN(length int) CString {\n\tc := make(CString, length+1)\n\treturn c\n}\n\n"
         del self.imports[self.imports.index("CString")]
       for fun in self.used_custom_functions:
         if fun in CUSTOM_FUNCTIONS:
@@ -175,7 +177,7 @@ class GoGenerator(object):
     def visit_Constant(self, n):
         v = n.value
         if v.startswith("\"") and v.endswith("\""):
-          return "NewCString(" + v + ")"
+          return "cstr(" + v + ")"
         return n.value
         
     def visit_ID(self, n):
@@ -243,9 +245,10 @@ class GoGenerator(object):
         elif n.op == 'sizeof':
             # Always parenthesize the argument of sizeof since it can be 
             # a name.
-            if not "unsafe" in self.imports:
-              self.imports.append("unsafe")
-            return 'unsafe.Sizeof(%s)' % self.visit(n.expr)
+            #if not "unsafe" in self.imports:
+            #  self.imports.append("unsafe")
+            #return 'unsafe.Sizeof(%s)' % self.visit(n.expr)
+            return 'len(%s)' % self.visit(n.expr)
         else:
             return '%s%s' % (n.op, operand)
 
@@ -516,10 +519,13 @@ class GoGenerator(object):
         if condition in self.vartypes:
           ctype = self.vartypes[condition]
           #log(condition + " is of type " + ctype)
+        ntype = n.iftrue.type
+        if ntype == "string":
+          ntype = "CString"
         if ctype == "bool":
-          s = "map[bool]" + n.iftrue.type + "{true: " + self.visit(n.iftrue) + ", false: " + self.visit(n.iffalse) + "}[" + condition + "]"
+          s = "map[bool]" + ntype + "{true: " + self.visit(n.iftrue) + ", false: " + self.visit(n.iffalse) + "}[" + condition + "]"
         elif ctype == "int":
-          s = "map[int]" + n.iftrue.type + "{1: " + self.visit(n.iftrue) + ", 0: " + self.visit(n.iffalse) + "}[" + condition + "]"
+          s = "map[int]" + ntype + "{1: " + self.visit(n.iftrue) + ", 0: " + self.visit(n.iffalse) + "}[" + condition + "]"
         return s
     
     def _remove_curly_blank_lines(self, s):
@@ -886,11 +892,9 @@ class GoGenerator(object):
         bpos = s.rfind("\n", 0, pos)
         eolpos = s.find("\n", pos)
         contents = s[bpos:eolpos]
-        log("AJAJAJAJ! " + contents)
         num = "".join([x for x in contents.split("=")[1] if x in "0123456789"])
-        log("NUM: " + num)
         if num:
-          newcontents = contents.split("*")[0] + "CString = NewEmptyCString(" + num + ")"
+          newcontents = contents.split("*")[0] + "CString = cstrN(" + str(int(num) - 1) + ")"
         else:
           newcontents = contents + "CString"
         s = s[:bpos] + newcontents + s[eolpos:]
@@ -904,10 +908,48 @@ class GoGenerator(object):
           newcontents = contents.replace("fmt.Printf(", "fmt.Println(", 1).replace("\\n\")", "\")", 1)
           #log("NEWCONTENTS: " + newcontents)
           s = s[:pos] + newcontents + s[eolpos:]
-      #for sfunc in ["Printf", "Scanf", "Println", "Scanln"]:
-      #  if (sfunc + "(NewCString") in s:
-      #      s = s.replace(sfunc + "(NewCString", sfunc + "(")
-      #      s = s.replace("strlen(", "len(")
+      # Add & to scanf variables
+      oldpos = 0
+      for fix in range(s.count("scanf(")):
+        pos = s.find("scanf(", oldpos)
+        oldpos = pos
+        eolpos = s.find("\n", pos)
+        contents = s[pos:eolpos]
+        paramstring = contents.split("(", 1)[1].rsplit(")", 1)[0]
+        params = paramstring.split(",")
+        #log("PARAMS: " + str(params))
+        newparams = []
+        for param in params:
+            if not "(" in param:
+                newparams.append("&" + param.strip())
+            else:
+                newparams.append(param.strip()) 
+        newps = ", ".join(newparams)
+        newcontents = contents.replace(paramstring, newps)
+        #log("NEWCONTENTS: " + str(newcontents))
+        s = s[:pos] + newcontents + s[eolpos:]
+      # Add & to first strcpy variable
+      oldpos = 0
+      for fix in range(s.count("strcpy(")):
+        pos = s.find("strcpy(", oldpos)
+        oldpos = pos
+        eolpos = s.find("\n", pos)
+        contents = s[pos:eolpos]
+        paramstring = contents.split("(", 1)[1].rsplit(")", 1)[0]
+        params = paramstring.split(",")
+        #log("PARAMS: " + str(params))
+        newparams = []
+        donefirst = False
+        for param in params:
+            if (not donefirst) and (not "(" in param):
+                newparams.append("&" + param.strip())
+                donefirst = True
+            else:
+                newparams.append(param.strip()) 
+        newps = ", ".join(newparams)
+        newcontents = contents.replace(paramstring, newps)
+        #log("NEWCONTENTS: " + str(newcontents))
+        s = s[:pos] + newcontents + s[eolpos:]
       return s
 
     def fix_int_to_bool(self, s):
@@ -948,7 +990,9 @@ def translate_to_go(filename):
 
     data = cleanup(data)
    
-    filename = tempfile.mkstemp()[1]
+    #filename = tempfile.mkstemp()[1]
+    filename = "/tmp/jeje"
+
     f = open(filename, "w")
     f.write(data)
     f.close()
