@@ -921,14 +921,17 @@ class GoGenerator(object):
         newparams = []
         for param in params:
             if not "(" in param:
-                newparams.append("&" + param.strip())
+                if not param.strip().startswith("&"):
+                    newparams.append("&" + param.strip())
+                else:
+                    newparams.append(param.strip())
             else:
                 newparams.append(param.strip()) 
         newps = ", ".join(newparams)
         newcontents = contents.replace(paramstring, newps)
         #log("NEWCONTENTS: " + str(newcontents))
         s = s[:pos] + newcontents + s[eolpos:]
-      # Add & to first strcpy variable
+      # Add & to first strcpy variable, if it's not there already
       oldpos = 0
       for fix in range(s.count("strcpy(")):
         pos = s.find("strcpy(", oldpos)
@@ -942,7 +945,10 @@ class GoGenerator(object):
         donefirst = False
         for param in params:
             if (not donefirst) and (not "(" in param):
-                newparams.append("&" + param.strip())
+                if not param.strip().startswith("&"):
+                    newparams.append("&" + param.strip())
+                else:
+                    newparams.append(param.strip())
                 donefirst = True
             else:
                 newparams.append(param.strip()) 
