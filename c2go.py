@@ -97,7 +97,7 @@ SKIP_INCLUDES = ["CString"]
 
 WHOLE_PROGRAM_REPLACEMENTS = {
     r'fmt.Printf("\n")': "fmt.Println()",
-    "func main(argc int, argv *[]string) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
+    "func main(argc int, argv *[]CString) int {": "func main() {\n\tflag.Parse()\n\targv := flag.Args()\n\targc := len(argv)+1\n",
     "argv[": "argv[-1+",
     "for (1)": "for",
     "\n\n\n": "\n",
@@ -245,10 +245,15 @@ class GoGenerator(object):
         elif n.op == 'sizeof':
             # Always parenthesize the argument of sizeof since it can be 
             # a name.
-            #if not "unsafe" in self.imports:
-            #  self.imports.append("unsafe")
-            #return 'unsafe.Sizeof(%s)' % self.visit(n.expr)
-            return 'len(%s)' % self.visit(n.expr)
+            e = self.visit(n.expr)
+            if e in self.vartypes:
+              if "]" in self.vartypes[e]:
+                return 'len(%s)' % e
+            #else:
+            #  log("NOT IN VARTYPES: " + str(e))
+            if not "unsafe" in self.imports:
+              self.imports.append("unsafe")
+            return 'unsafe.Sizeof(%s)' % e
         else:
             return '%s%s' % (n.op, operand)
 
@@ -272,7 +277,7 @@ class GoGenerator(object):
           # Convert a = (b = 1) to a, b = 1, 1
           # TODO: This covers some code, but not everything, make it more general
           if (op == "=") and ("=" in rval_str):
-            op = ", "
+            op = ", " # TODO! FIX!
             rval_str += "," + rval_str.split("=")[1]
         lvalue = self.visit(n.lvalue)
         if "[" in lvalue:
