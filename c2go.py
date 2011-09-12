@@ -39,20 +39,16 @@ sys.path.insert(0, '..')
 from pycparser import c_parser, c_ast, parse_file
 
 REPLACEMENT_FUNCTIONS = {
-  "printf": "fmt.Printf",
-  "scanf": "fmt.Scanf",
-  "sprintf": "fmt.Sprintf",
   "stat": "syscall.Stat",
   "access": "syscall.Access",
-  "rand": "rand.Float64",
-  "strlen": "len"
+  "rand": "rand.Float64"
 }
 
 REPLACEMENT_TYPES = {
   "static struct stat": "syscall.Stat_t",
-  "char *": "string",
+  "char *": "CString",
   "char": "byte",
-  "unsigned char": "uint8",
+  "unsigned char": "byte",
   "int *": "*int",
   "int": "int",
   "unsigned int": "uint",
@@ -84,17 +80,18 @@ REPLACEMENT_DEFS = {
 }
 
 CUSTOM_FUNCTIONS = {
-    "strcpy": ["",         "func strcpy(a *string, b string) {\n\ta = &b\n}"],
     "atoi":   ["strconv",  "func atoi(a string) int {\n\tv, _ := strconv.Atoi(a)\n\treturn v\n}"],
     "sleep":  ["time",     "func sleep(sec int64) {\n\ttime.Sleep(1e9 * sec)\n}"],
     "getchar":["fmt",      'func getchar() byte {\n\tvar b byte\n\tfmt.Scanf("%c", &b)\n\treturn b\n}'],
     "putchar":["fmt",      'func putchar(b byte) {\n\tfmt.Printf("%c", b)\n}'],
     "abs":    ["",         'func abs(a int) int {\n\tif a >= 0 {\n\t\treturn a\n\t}\n\treturn -a\n}'],
-    "strcmp": ["",         'func strcmp(a, b string) int {\n\tif a == b {\n\t\treturn 0\n\t}\n\talen := len(a)\n\tblen := len(b)\n\tminlen := blen\n\tif alen < minlen {\n\t\tminlen = alen\n\t}\n\tfor i := 0; i < minlen; i++ {\n\t\tif a[i] > b[i] {\n\t\t\treturn 1\n\t\t} else if a[i] < b[i] {\n\t\t\treturn -1\n\t\t}\n\t}\n\tif alen > blen {\n\t\treturn 1\n\t}\n\treturn -1\n}']
-#    "strlen": ["",         'func strlen(a *string) int {\n\treturn len(*a)\n}']
-
-
+    "strcpy": ["CString",  "func strcpy(a *CString, b CString) {\n\ta = &b\n}"],
+    "strcmp": ["CString",  'func strcmp(acs, bcs CString) int {\n\ta := acs.ToString()\n\tb := bcs.ToString()\n\tif a == b {\n\t\treturn 0\n\t}\n\talen := len(a)\n\tblen := len(b)\n\tminlen := blen\n\tif alen < minlen {\n\t\tminlen = alen\n\t}\n\tfor i := 0; i < minlen; i++ {\n\t\tif a[i] > b[i] {\n\t\t\treturn 1\n\t\t} else if a[i] < b[i] {\n\t\t\treturn -1\n\t\t}\n\t}\n\tif alen > blen {\n\t\treturn 1\n\t}\n\treturn -1\n}'],
+    "strlen": ["CString",  'func strlen(c CString) int {\n\treturn len(c.ToString())\n}'],
+    "printf": ["fmt", "func printf(format CString, a ...interface{}) {\n\tfmt.Printf(format.ToString(), a...)\n}"]
 }
+
+SKIP_INCLUDES = ["CString"]
 
 WHOLE_PROGRAM_REPLACEMENTS = {
     r'fmt.Printf("\n")': "fmt.Println()",
@@ -103,8 +100,8 @@ WHOLE_PROGRAM_REPLACEMENTS = {
     "for (1)": "for",
     "\n\n\n": "\n",
     # TODO: Find a sensible way to figure out when a program wants strings and when it wants byte arrays
-    "*[]byte": "*string",
-    "*[128]byte = new([128]byte)": "*string",
+    "*[]byte": "CString",
+    #"*[128]byte = new([128]byte)": "*string",
     #
     "'\\0'": "'\\x00'"
 }
@@ -141,7 +138,7 @@ class GoGenerator(object):
     def _make_imports(self):
       s = "import (\n"
       for imp in self.imports:
-        if imp:
+        if imp and (imp not in SKIP_INCLUDES):
           s += "  \"%s\"\n" % (imp)
       s += ")\n\n"
       return s
@@ -149,6 +146,9 @@ class GoGenerator(object):
     def _make_customfunc(self):
       """Define custom functions"""
       s = ""
+      if "CString" in self.imports:
+        s += "type CString []byte\n\nfunc (c CString) ToString() string {\n\ts := \"\"\n\tfor _, e := range c {\n\t\tif e == 0 {\n\t\t\t\tbreak\n\t\t}\n\t\ts += string(e)\n\t}\n\treturn s\n}\n\nfunc NewCString(s string) CString {\n\tc := make(CString, len(s)+1)\n\tfor i, e := range s {\n\t\tc[i] = byte(e)\n\t}\n\t// The last byte will already be 0\n\treturn c\n}\n\n"
+        del self.imports[self.imports.index("CString")]
       for fun in self.used_custom_functions:
         if fun in CUSTOM_FUNCTIONS:
           s += CUSTOM_FUNCTIONS[fun][1] + "\n\n"
@@ -173,6 +173,9 @@ class GoGenerator(object):
             return ''.join(self.visit(c) for c in node.children())
     
     def visit_Constant(self, n):
+        v = n.value
+        if v.startswith("\"") and v.endswith("\""):
+          return "NewCString(" + v + ")"
         return n.value
         
     def visit_ID(self, n):
@@ -214,6 +217,9 @@ class GoGenerator(object):
             pkg = CUSTOM_FUNCTIONS[fref][0]
             if pkg not in self.imports:
               self.imports.append(pkg)
+            if "CString" in CUSTOM_FUNCTIONS[fref][1]:
+              if "CString" not in self.imports:
+                self.imports.append("CString")
           #log("WANTS TO ENABLE CUSTOM FUNCTION: " + fref)
         elif fref in REPLACEMENT_MACROS:
           pkg, first_part, last_part = REPLACEMENT_MACROS[fref]
@@ -875,6 +881,19 @@ class GoGenerator(object):
           inspos = s.find("\n", pos1) + 1
           s = s[:inspos] + whitespace + contents + "\n" + s[inspos:]
         #break
+      for fix in range(s.count("]byte = new([")):
+        pos = s.find("]byte = new([")
+        bpos = s.rfind("\n", 0, pos)
+        eolpos = s.find("\n", pos)
+        contents = s[bpos:eolpos]
+        log("AJAJAJAJ! " + contents)
+        num = "".join([x for x in contents.split("=")[1] if x in "0123456789"])
+        log("NUM: " + num)
+        if num:
+          newcontents = contents.split("*")[0] + "CString = NewEmptyCString(" + num + ")"
+        else:
+          newcontents = contents + "CString"
+        s = s[:bpos] + newcontents + s[eolpos:]
       # Use fmt.Println instead of fmt.Printf ... \n
       for fix in range(s.count("fmt.Printf(")):
         pos = s.find("fmt.Printf(")
@@ -885,7 +904,10 @@ class GoGenerator(object):
           newcontents = contents.replace("fmt.Printf(", "fmt.Println(", 1).replace("\\n\")", "\")", 1)
           #log("NEWCONTENTS: " + newcontents)
           s = s[:pos] + newcontents + s[eolpos:]
-
+      #for sfunc in ["Printf", "Scanf", "Println", "Scanln"]:
+      #  if (sfunc + "(NewCString") in s:
+      #      s = s.replace(sfunc + "(NewCString", sfunc + "(")
+      #      s = s.replace("strlen(", "len(")
       return s
 
     def fix_int_to_bool(self, s):
