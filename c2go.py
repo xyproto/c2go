@@ -47,6 +47,7 @@ REPLACEMENT_FUNCTIONS = {
 
 REPLACEMENT_TYPES = {
   "static struct stat": "syscall.Stat_t",
+  "struct timeval": "syscall.Timeval",
   "char *": "CString",
   "char": "byte",
   "unsigned char": "byte",
@@ -90,7 +91,8 @@ CUSTOM_FUNCTIONS = {
     "strcmp": ["CString",  'func strcmp(acs, bcs CString) int {\n\ta := acs.ToString()\n\tb := bcs.ToString()\n\tif a == b {\n\t\treturn 0\n\t}\n\talen := len(a)\n\tblen := len(b)\n\tminlen := blen\n\tif alen < minlen {\n\t\tminlen = alen\n\t}\n\tfor i := 0; i < minlen; i++ {\n\t\tif a[i] > b[i] {\n\t\t\treturn 1\n\t\t} else if a[i] < b[i] {\n\t\t\treturn -1\n\t\t}\n\t}\n\tif alen > blen {\n\t\treturn 1\n\t}\n\treturn -1\n}'],
     "strlen": ["CString",  'func strlen(c CString) int {\n\treturn len(c.ToString())\n}'],
     "printf": ["fmt",      "func printf(format CString, a ...interface{}) {\n\tfmt.Printf(format.ToString(), a...)\n}"],
-    "scanf":  ["fmt",      "func scanf(format CString, a ...interface{}) {\n\tfmt.Scanf(format.ToString(), a...)\n}"]
+    "scanf":  ["fmt",      "func scanf(format CString, a ...interface{}) {\n\tfmt.Scanf(format.ToString(), a...)\n}"],
+    "b2i":    ["",         "func b2i(b bool) int {\n\tif b{\n\t\treturn 1\n\t}\n\treturn 0\n}"]
 }
 
 SKIP_INCLUDES = ["CString"]
@@ -105,8 +107,15 @@ WHOLE_PROGRAM_REPLACEMENTS = {
     "*[]byte": "CString",
     #"*[128]byte = new([128]byte)": "*string",
     #
-    "'\\0'": "'\\x00'"
+    "'\\0'": "'\\x00'",
+    "int = 0\n": "int\n"
 }
+
+def is_prolly_var(s): #: bool
+    for letter in s:
+        if letter not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789[]":
+            return False
+    return True
 
 class GoGenerator(object):
     """ Uses the same visitor pattern as c_ast.NodeVisitor, but modified to
@@ -148,9 +157,12 @@ class GoGenerator(object):
     def _make_customfunc(self):
       """Define custom functions"""
       s = ""
-      if "CString" in self.imports:
-        s += "type CString []byte\n\nfunc (c CString) ToString() string {\n\ts := \"\"\n\tfor _, e := range c {\n\t\tif e == 0 {\n\t\t\t\tbreak\n\t\t}\n\t\ts += string(e)\n\t}\n\treturn s\n}\n\nfunc cstr(s string) CString {\n\tc := make(CString, len(s)+1)\n\tfor i, e := range s {\n\t\tc[i] = byte(e)\n\t}\n\t// The last byte will already be 0\n\treturn c\n}\n\nfunc cstrN(length int) CString {\n\tc := make(CString, length+1)\n\treturn c\n}\n\n"
-        del self.imports[self.imports.index("CString")]
+      specials = ["CString"]
+      for special in specials:
+          if special in self.imports:
+            if special == "CString":
+                s += "type CString []byte\n\nfunc (c CString) ToString() string {\n\ts := \"\"\n\tfor _, e := range c {\n\t\tif e == 0 {\n\t\t\t\tbreak\n\t\t}\n\t\ts += string(e)\n\t}\n\treturn s\n}\n\nfunc cstr(s string) CString {\n\tc := make(CString, len(s)+1)\n\tfor i, e := range s {\n\t\tc[i] = byte(e)\n\t}\n\t// The last byte will already be 0\n\treturn c\n}\n\nfunc cstrN(length int) CString {\n\tc := make(CString, length+1)\n\treturn c\n}\n\n"
+            del self.imports[self.imports.index(special)]
       for fun in self.used_custom_functions:
         if fun in CUSTOM_FUNCTIONS:
           s += CUSTOM_FUNCTIONS[fun][1] + "\n\n"
@@ -219,9 +231,11 @@ class GoGenerator(object):
             pkg = CUSTOM_FUNCTIONS[fref][0]
             if pkg not in self.imports:
               self.imports.append(pkg)
-            if "CString" in CUSTOM_FUNCTIONS[fref][1]:
-              if "CString" not in self.imports:
-                self.imports.append("CString")
+            specials = ["CString"]
+            for special in specials:
+                if special in CUSTOM_FUNCTIONS[fref][1]:
+                  if special not in self.imports:
+                    self.imports.append(special)
           #log("WANTS TO ENABLE CUSTOM FUNCTION: " + fref)
         elif fref in REPLACEMENT_MACROS:
           pkg, first_part, last_part = REPLACEMENT_MACROS[fref]
@@ -269,6 +283,7 @@ class GoGenerator(object):
                             n.rvalue, 
                             lambda n: isinstance(n, c_ast.Assignment))
         op = n.op
+        lvalue = self.visit(n.lvalue)
         if "=" in rval_str:
           # There is probably an assignment on the right side, not good
           r = rval_str.strip()
@@ -276,10 +291,20 @@ class GoGenerator(object):
             rval_str = rval_str.split("(", 1)[1].rsplit(")", 1)[0]
           # Convert a = (b = 1) to a, b = 1, 1
           # TODO: This covers some code, but not everything, make it more general
-          if (op == "=") and ("=" in rval_str):
-            op = ", " # TODO! FIX!
+          if (op == "=") and ("==" in rval_str):
+            op = "="
             rval_str += "," + rval_str.split("=")[1]
-        lvalue = self.visit(n.lvalue)
+            if rval_str.strip().endswith(","):
+              rval_str = rval_str.strip()[:-1]
+            # Most likely, a bool would be in place here
+            if lvalue in self.vartypes:
+              if self.vartypes[lvalue] == "int":
+                rval_str = "b2i(" + rval_str + ")"
+                if not "b2i" in self.used_custom_functions:
+                    self.used_custom_functions.append("b2i")
+          elif (op == "=") and ("=" in rval_str):
+            op = ", "
+            rval_str += "," + rval_str.split("=")[1]
         if "[" in lvalue:
           name = lvalue.split("[")[0].strip()
           if name in self.vartypes:
@@ -327,6 +352,10 @@ class GoGenerator(object):
 
             s = s.replace(t, "", 1)
             s += " " + REPLACEMENT_TYPES[t]
+            if "." in REPLACEMENT_TYPES[t]:
+              pkg = REPLACEMENT_TYPES[t].split(".")[0]
+              if pkg not in self.imports:
+                self.imports.append(pkg)
             l = s.rsplit(" ", 1)
             arraystar = ""
             if ("[" in arraytype) and ("]" in arraytype):
@@ -544,17 +573,39 @@ class GoGenerator(object):
           bodylines.append(line)
       s = "\n".join(bodylines) + "\n"
       return s
-    
+
     def visit_If(self, n):
         s = 'if ('
         if n.cond:
           e = self.visit(n.cond)
-          if e.isalnum():
+          if is_prolly_var(e):
               # TODO: Find out how to replace all variables that are evaluated
               #       on their own with > 0, since ints are so often booleans
               #
               # if it's just a lone variable, assume it is an int used as bool
-              e = "" + e + " > 0" 
+              e = e + " > 0" 
+          else:
+            # Just handle a few simple and common cases
+            # TODO: Find a proper fix for integers in boolean expressions
+            if ("&&" in e) or ("||" in e) or ("!" in e):
+              if e.count("&&") == 1:
+                if is_prolly_var(e.split("&&")[0].strip()):
+                  word = e.split("&&")[0].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+                elif is_prolly_var(e.split("&&")[1].strip()):
+                  word = e.split("&&")[1].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+              elif e.count("||") == 1:
+                if is_prolly_var(e.split("||")[0].strip()):
+                  word = e.split("&&")[0].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+                elif is_prolly_var(e.split("||")[1].strip()):
+                  word = e.split("&&")[1].strip()
+                  e = e.replace(word, "(" + word + " > 0)", 1)
+              elif e.strip().startswith("!(") and (e.count(")") == 1):
+                word = e.split("!(")[1].strip().split(")")[0].strip()
+                if is_prolly_var(word):
+                  e = "(" + word + " <= 0)"
           s += e
         s += ') {\n'
         if_body_true = self._generate_stmt(n.iftrue, add_indent=True)
@@ -586,7 +637,7 @@ class GoGenerator(object):
         s += ';'
         if n.cond:
           e = self.visit(n.cond)
-          if e.isalnum():
+          if is_prolly_var(e):
               # TODO: Find out how to replace all variables that are evaluated
               #       on their own with > 0, since ints are so often booleans
               #
@@ -597,17 +648,17 @@ class GoGenerator(object):
             # TODO: Find a proper fix for integers in boolean expressions
             if ("&&" in e) or ("||" in e):
               if e.count("&&") == 1:
-                if e.split("&&")[0].strip().isalpha():
+                if is_prolly_var(e.split("&&")[0].strip()):
                   word = e.split("&&")[0].strip()
                   e = e.replace(word, "(" + word + " > 0)", 1)
-                elif e.split("&&")[1].strip().isalpha():
+                elif is_prolly_var(e.split("&&")[1].strip()):
                   word = e.split("&&")[1].strip()
                   e = e.replace(word, "(" + word + " > 0)", 1)
               elif e.count("||") == 1:
-                if e.split("||")[0].strip().isalpha():
+                if is_prolly_var(e.split("||")[0].strip()):
                   word = e.split("&&")[0].strip()
                   e = e.replace(word, "(" + word + " > 0)", 1)
-                elif e.split("||")[1].strip().isalpha():
+                elif is_prolly_var(e.split("||")[1].strip()):
                   word = e.split("&&")[1].strip()
                   e = e.replace(word, "(" + word + " > 0)", 1)
           s += e
@@ -689,9 +740,40 @@ class GoGenerator(object):
         if n.cond:
             con = self.visit(n.cond)
             if con != "1":
-                s += self._make_indent() + 'if !('
-                s += self.visit(n.cond)
-                s += ') {break};\n'
+                s += self._make_indent() + 'if '
+                e = self.visit(n.cond)
+                if ("++" in e) or ("--" in e):
+                  log("NOOO")
+                if is_prolly_var(e):
+                    # TODO: Find out how to replace all variables that are evaluated
+                    #       on their own with > 0, since ints are so often booleans
+                    #
+                    # if it's just a lone variable, assume it is an int used as bool
+                    e = e + " > 0" 
+                else:
+                  # Just handle a few simple and common cases
+                  # TODO: Find a proper fix for integers in boolean expressions
+                  if ("&&" in e) or ("||" in e) or ("!" in e):
+                    if e.count("&&") == 1:
+                      if is_prolly_var(e.split("&&")[0].strip()):
+                        word = e.split("&&")[0].strip()
+                        e = e.replace(word, "(" + word + " > 0)", 1)
+                      elif is_prolly_var(e.split("&&")[1].strip()):
+                        word = e.split("&&")[1].strip()
+                        e = e.replace(word, "(" + word + " > 0)", 1)
+                    elif e.count("||") == 1:
+                      if is_prolly_var(e.split("||")[0].strip()):
+                        word = e.split("&&")[0].strip()
+                        e = e.replace(word, "(" + word + " > 0)", 1)
+                      elif is_prolly_var(e.split("||")[1].strip()):
+                        word = e.split("&&")[1].strip()
+                        e = e.replace(word, "(" + word + " > 0)", 1)
+                    elif e.strip().startswith("!(") and (e.count(")") == 1):
+                      word = e.split("!(")[1].strip().split(")")[0].strip()
+                      if is_prolly_var(word):
+                        e = "(" + word + " <= 0)"
+                s += e
+                s += ' {break};\n'
         s += self._make_indent() + "}"
         return s
 
