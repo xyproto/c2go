@@ -1,0 +1,5 @@
+Convert from *[N]int to *[]int:
+
+var x *[10]int = new([10]int)
+temp := (*x)[:]
+newx := &temp
