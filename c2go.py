@@ -37,7 +37,7 @@ import os
 #
 sys.path.insert(0, '..')
 
-from pycparser import c_parser, c_ast, parse_file
+from pycparser import c_parser, c_ast, parse_file, plyparser
 
 REPLACEMENT_FUNCTIONS = {
   "stat": "syscall.Stat",
@@ -1084,13 +1084,18 @@ def translate_to_go(filename):
     data = cleanup(data)
    
     #filename = tempfile.mkstemp()[1]
-    filename = "/tmp/jeje"
+    filename2 = "/tmp/jeje"
 
-    f = open(filename, "w")
+    f = open(filename2, "w")
     f.write(data)
     f.close()
 
-    ast = parse_file(filename, use_cpp=True)
+    try:
+        ast = parse_file(filename2, use_cpp=True)
+    except plyparser.ParseError as e:
+        print("Could not parse %s:" % (filename))
+        print("line " + "".join(str(e).split(":", 1)[1:]))
+        return
     generator = GoGenerator()
     s = generator.visit(ast)
     s = generator.fix_int_to_bool(s)
