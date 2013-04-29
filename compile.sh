@@ -6,11 +6,9 @@ for f in *.c; do
   echo ../c2go.py $x.c \> $x.go
   ../c2go.py $x.c > $x.go
   rm lextab.py yacctab.py
-  echo gofmt -w $x.go
-  gofmt -w $x.go
-  echo 6g $x.go
-  6g $x.go
-  echo 6l -o $x $x.6 && echo ok
-  6l -o $x $x.6 && rm $x.6
+  echo go fmt $x.go
+  go fmt $x.go
+  echo go build -o $x $x.go
+  go build -o $x $x.go && echo ok
 done
 cd ..
