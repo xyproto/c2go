@@ -25,13 +25,13 @@ Help out
 
 If you wish to help out, here's one way:
 
-# Enter the "doesnotworkyet" directory
-# Select a c file
-# Type `../try.sh name`, where name is the filename before ".c"
-# Observe the error messages when the generated Go file doesn't compile
-# Edit the Go file to make it compile again
-# Edit c2go.py to make it generate a Go file that does compile for the given test case
-# Create a pull request
+1 Enter the "doesnotworkyet" directory
+1 Select a c file
+1 Type `../try.sh name`, where name is the filename before ".c"
+1 Observe the error messages when the generated Go file doesn't compile
+1 Edit the Go file to make it compile again
+1 Edit c2go.py to make it generate a Go file that does compile for the given test case
+1 Create a pull request
 
 Pull requests are appreciated! Thanks.
 
