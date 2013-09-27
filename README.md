@@ -1,7 +1,7 @@
-Go2C 0.1
+C2Go 0.1
 ========
 
-Go2C is based on the c-to-c.py example from pycparser by Eli Bendersky, and uses pycparser extensively.
+C2Go is based on the c-to-c.py example from pycparser by Eli Bendersky, and uses pycparser extensively.
 
 Alexander Rødseth <rodseth@gmail.com>
 License: BSD
@@ -20,10 +20,10 @@ Required packages if you're on Arch Linux
 * python-pycparser (AUR) (depends on python-ply, also from AUR)
 
 
-Help out
---------
+Improvements
+------------
 
-If you wish to help out, here's one way:
+If you wish to help out, here is one way:
 
 1. Enter the "doesnotworkyet" directory
 1. Select a c file
@@ -33,7 +33,7 @@ If you wish to help out, here's one way:
 1. Edit c2go.py to make it generate a Go file that does compile for the given test case
 1. Create a pull request
 
-Pull requests are appreciated! Thanks.
+Pull requests are appreciated.
 
 
 Changes
