@@ -3,10 +3,11 @@ C2Go 0.1
 
 C2Go is based on the c-to-c.py example from pycparser by Eli Bendersky, and uses pycparser extensively.
 
-Alexander Rødseth <rodseth@gmail.com>
-License: BSD
+* Alexander Rødseth <rodseth@gmail.com>
+* License: BSD
 
 C examples are from: http://www.cis.temple.edu/~ingargio/cis71/code/, except for "test.c"
+
 
 Requirements
 ------------
@@ -17,7 +18,7 @@ Requirements
 Required packages if you're on Arch Linux
 -----------------------------------------
 
-* python-pycparser (AUR) (depends on python-ply, also from AUR)
+* python-pycparser from [extra]
 
 
 Improvements
