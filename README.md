@@ -15,12 +15,6 @@ Requirements
 * pycparser
 * ply
 
-Required packages if you're on Arch Linux
------------------------------------------
-
-* python-pycparser from [extra]
-
-
 Improvements
 ------------
 
