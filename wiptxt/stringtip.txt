@@ -1,3 +1,0 @@
-xyproto | how do I convert *[128]uint8 to string?
-gremy_o | xyproto: string(*x[:]) I guess
-I just tested and the right syntax is actually string((*x)[:]) 
