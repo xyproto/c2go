@@ -4,8 +4,6 @@
 #
 # -----------------------------------------------------------------------
 #
-# Go2C 0.1
-#
 # Go2C is based on the c-to-c.py example from pycparser by Eli Bendersky,
 # and uses pycparser extensively.
 #
@@ -32,11 +30,14 @@ from __future__ import print_function
 import sys
 import os
 
+__version__ = "0.1"
+
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
 #
 sys.path.insert(0, '..')
 
+import pycparser
 from pycparser import c_parser, c_ast, parse_file, plyparser
 
 REPLACEMENT_FUNCTIONS = {
@@ -1105,18 +1106,21 @@ def translate_to_go(filename):
     print(s)
 
 def log(s):
-  f = open("/tmp/c2go.log", "a")
+  f = open("c2go.log", "a")
   f.write(str(s) + "\n")
   f.close()
 
 def clearlog():
-  f = open("/tmp/c2go.log", "w")
+  f = open("c2go.log", "w")
   f.close()
 
 #------------------------------------------------------------------------------
 if __name__ == "__main__":
+    if '-v' in sys.argv:
+        print("c2go %s (using pycparser %s)" % (__version__, pycparser.__version__))
+        sys.argv.remove('-v')
     if len(sys.argv) > 1:
         translate_to_go(sys.argv[1])
     else:
-        print("Please provide a filename as argument")
+        sys.exit("usage: c2go.py <filename>")
 
