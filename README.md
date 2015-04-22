@@ -34,6 +34,7 @@ Pull requests are appreciated.
 Changes
 -------
 
-* April 2013 - Updated to use Go 1
-* October 2014 - Only minor changes
+* 2011-08-30 - Initial commit
+* 2013-04-29 - Update for Go 1
+* 2014-05-07 - Minor changes
 
