@@ -185,7 +185,10 @@ class GoGenerator(object):
         if node is None:
             return ''
         else:
-            return ''.join(self.visit(c) for c in node.children())
+            try:
+                return ''.join(self.visit(c) for c in node.children())
+            except AttributeError:
+                return ''
     
     def visit_Constant(self, n):
         v = n.value
