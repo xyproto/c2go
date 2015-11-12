@@ -30,7 +30,7 @@ from __future__ import print_function
 import sys
 import os
 
-__version__ = "0.1"
+__version__ = "0.2"
 
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
@@ -188,7 +188,7 @@ class GoGenerator(object):
             try:
                 return ''.join(self.visit(c) for c in node.children())
             except AttributeError:
-                return ''
+              return '/* C2GO: ? */'
     
     def visit_Constant(self, n):
         v = n.value
