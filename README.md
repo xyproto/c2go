@@ -12,6 +12,7 @@ The C examples are from: http://www.cis.temple.edu/~ingargio/cis71/code/.
 Requirements
 ------------
 
+* python 2 or python 3
 * pycparser
 * ply
 
@@ -31,10 +32,22 @@ If you wish to help out, here is one way:
 Pull requests are appreciated.
 
 
+Installation
+------------
+
+`c2go.py` can be installed as ie. `/usr/bin/c2go`.
+
+
+Usage
+-----
+
+The utility takes a filename as the first argument. Any lines that can not be translated from C to Go will be commented with `// C2GO`.
+
+
 Changes
 -------
 
 * 2011-08-30 - Initial commit
 * 2013-04-29 - Update for Go 1
 * 2014-05-07 - Minor changes
-
+* 2015-11-12 - Minor fix
