@@ -40,6 +40,6 @@ Changes
 General information
 ---
 
-* Alexander F Rødseth <xyproto@archlinux.org>
+* Author: Alexander F Rødseth
 * License: BSD
 * Pull requests are appreciated.
